@@ -10,6 +10,42 @@ Command line interface for managing passwords.
 * Master key rotation.
 * Remote backup
 
+## Usage
+
+```bash
+# Create vault
+pwds vault create --name "main"
+
+# Select vault
+pwds vault select --name "main"
+
+# Create a secret
+pwds secret create --name "foo"
+
+# Retreive a secret
+pwds secret get --name "foo"
+
+# List secrets (only the names)
+pwds secret list
+
+# Update a secret
+pwds secret set --name "foo"
+
+# Delete a secret
+pwds secret delete --name "foo"
+
+# Persist vault password
+pwds vault persist --pwfile "~/.pwds/pwfile"  # The password is base64 encoded
+pwds secret get -n "foo" -p "~/.pwds/pwfile"  # No password prompt; nice for scripting!
+
+# Rotate encryption key (re-encrypts secrets automatically)
+pwds vault rotate
+
+# Sync secrets with a remote server
+pwds config sync-url --value "https://pwds.byjonah.net"
+pwds vault sync
+```
+
 ## Dependencies
 
 * nss-softokn
@@ -29,6 +65,10 @@ include macros for Windows.
 
 I also wrote the `include/args` library and it has some quirks between Linux
 and macOS, so there's almost certainly some issues on Windows too.
+
+This project was designed to work with NSS "vaults", but could be extended to
+use various PKCS11 libraries for personal use with smart cards or smart sticks.
+In an enterprise setting, an HSM could be used.
 
 ## Motivation
 
