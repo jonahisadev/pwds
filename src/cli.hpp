@@ -2,8 +2,8 @@
 
 #include "args/args.hpp"
 
-namespace pwd {
+namespace pwds {
 
 args::parser create_parser();
 
-}  // namespace pwd
+}  // namespace pwds

@@ -1,106 +1,50 @@
 #include "crypto.hpp"
 
-#include <openssl/bio.h>
-#include <openssl/bn.h>
-#include <openssl/crypto.h>
-#include <openssl/err.h>
-#include <openssl/evp.h>
-#include <openssl/pem.h>
-#include <openssl/rsa.h>
-#include <openssl/x509.h>
+#include <botan/certstor_system.h>
+#include <botan/rsa.h>
+#include <botan/x509cert.h>
+#include <botan/x509path.h>
 
 #include <cstdint>
 #include <iostream>
-#include <stdexcept>
 
-#include "src/key.hpp"
+#include "base64/base64.hpp"
+#include "botan/data_src.h"
 
-std::string opensslError()
-{
-  BIO* bio = BIO_new(BIO_s_mem());
-  ERR_print_errors(bio);
-  char* buf;
-  size_t len = BIO_get_mem_data(bio, &buf);
-  std::string result(buf, len);
-  BIO_free(bio);
-  return result;
-}
+namespace pwds {
 
 namespace crypto {
 
-DerCert cert_der_from_pem(const std::string& pem)
+Botan::X509_Certificate load_cert_pem(const std::string& pem)
 {
-  // Read PEM into X509 object
-  X509* cert = NULL;
-  BIO* pem_ptr = BIO_new(BIO_s_mem());
-  BIO_write(pem_ptr, (void*)pem.c_str(), pem.length());
-  cert = PEM_read_bio_X509(pem_ptr, nullptr, nullptr, nullptr);
-  if (!cert) {
-    std::cerr << opensslError() << std::endl;
-    throw std::runtime_error("OpenSSL Error");
-  }
-
-  // Get subject
-  unsigned char subj[512];
-  unsigned char* subjp = subj;
-  X509_NAME* name_obj = X509_get_subject_name(cert);
-  long name_len = i2d_X509_NAME(name_obj, &subjp);
-  if (name_len < 0) {
-    std::cerr << opensslError() << std::endl;
-    throw std::runtime_error("OpenSSL Error");
-  }
-  std::vector<BYTE> subj_bytes;
-  subj_bytes.assign(subj, subj + name_len);
-
-  // Convert to DER in memory
-  BIO* der_ptr = BIO_new(BIO_s_mem());
-  i2d_X509_bio(der_ptr, cert);
-  BUF_MEM* mem = NULL;
-  BIO_get_mem_ptr(der_ptr, &mem);
-
-  // Load into vector
-  std::vector<BYTE> bytes;
-  bytes.assign(mem->data, mem->data + mem->length);
-
-  // Clean up
-  // BIO_free(pem_ptr);
-  // BIO_free(der_ptr);
-  // X509_free(cert);
-
-  // Done
-  return DerCert{bytes, subj_bytes};
+  Botan::DataSource_Memory ds(pem.data());
+  return Botan::X509_Certificate(ds);
 }
 
-PublicKeyRSA extract_pub_from_cert(const DerCert& cert)
+Botan::RSA_PublicKey extract_pubk_from_cert(const Botan::X509_Certificate& cert)
 {
-  X509* x509;
-  EVP_PKEY* pubkey;
-  RSA* rsa;
-  PublicKeyRSA obj;
+  auto publicKey = cert.subject_public_key();
+  return Botan::RSA_PublicKey(publicKey->algorithm_identifier(),
+                              publicKey->public_key_bits());
+}
 
-  auto* dataPtr = cert.all.data();
+bool validate_cert(const Botan::X509_Certificate& cert,
+                   std::vector<Botan::X509_Certificate> chain)
+{
+  Botan::System_Certificate_Store certStore;
+  Botan::Path_Validation_Restrictions restrictions;
 
-  x509 = d2i_X509(nullptr, &dataPtr, cert.all.size());
-  pubkey = X509_get_pubkey(x509);
-  rsa = EVP_PKEY_get1_RSA(pubkey);
+  std::vector<Botan::X509_Certificate> end_certs;
+  end_certs.push_back(cert);
+  for (const auto& c : chain) {
+    end_certs.push_back(c);
+  }
 
-  unsigned char buffer[2048];
-  uint64_t len;
+  auto validationResult =
+      Botan::x509_path_validate(end_certs, restrictions, certStore);
 
-  const BIGNUM* modulus = RSA_get0_n(rsa);
-  len = BN_bn2bin(modulus, buffer);
-  obj.modulus = std::vector<BYTE>(len);
-  obj.modulus.assign(buffer, buffer + len - 1);
-
-  const BIGNUM* exponent = RSA_get0_e(rsa);
-  len = BN_bn2bin(exponent, buffer);
-  obj.exponent = std::vector<BYTE>(len);
-  obj.exponent.assign(buffer, buffer + len - 1);
-
-  EVP_PKEY_free(pubkey);
-  RSA_free(rsa);
-
-  return obj;
+  return validationResult.successful_validation();
 }
 
 }  // namespace crypto
+}  // namespace pwds

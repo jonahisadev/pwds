@@ -1,35 +1,33 @@
 #include <fstream>
 #include <iostream>
-#include <sstream>
 #include <string>
 
 #include "args/args.hpp"
+#include "base64/base64.hpp"
 #include "cli.hpp"
 #include "config.hpp"
 #include "rang/rang.hpp"
-#include "src/base64.hpp"
 #include "util.hpp"
 #include "vault.hpp"
 
 Vault get_vault(const args::parser& parser)
 {
   Config config;
-  config.load(util::config_dir() + "/config.toml");
+  config.load(pwds::util::config_dir() + "/config.toml");
 
   std::string pass;
   if (!parser.has("pwfile")) {
-    pass = util::prompt_password("Enter master password: ");
+    pass = pwds::util::prompt_password("Enter master password: ");
   }
   else {
     std::ifstream is(parser.get("pwfile"));
     std::string encoded;
     is >> encoded;
-    auto decodedBytes = base64_decode(encoded);
     is.close();
-    pass = std::string(decodedBytes.begin(), decodedBytes.end());
+    pass = base64::from_base64(encoded);
   }
 
-  Vault vault(config.get_default().location);
+  Vault vault(config.get_default().location, config.get_default().name);
   vault.login(pass);
 
   return vault;
@@ -38,7 +36,7 @@ Vault get_vault(const args::parser& parser)
 void vault_list()
 {
   Config config;
-  config.load(util::config_dir() + "/config.toml");
+  config.load(pwds::util::config_dir() + "/config.toml");
   auto vaults = config.get_all();
   auto defaultVault = config.get_default();
 
@@ -59,15 +57,15 @@ void vault_list()
 void vault_select(const std::string& name)
 {
   Config config;
-  config.load(util::config_dir() + "/config.toml");
+  config.load(pwds::util::config_dir() + "/config.toml");
   config.set_default(name);
 }
 
 void vault_create(const std::string& name)
 {
   std::cout << "Creating new vault \"" << name << "\"" << std::endl;
-  std::string pass1 = util::prompt_password("Enter password: ");
-  std::string pass2 = util::prompt_password("Enter same password: ");
+  std::string pass1 = pwds::util::prompt_password("Enter password: ");
+  std::string pass2 = pwds::util::prompt_password("Enter same password: ");
 
   if (pass1 != pass2) {
     std::cerr << "Passwords do not match" << std::endl;
@@ -76,7 +74,7 @@ void vault_create(const std::string& name)
 
   auto path = Vault::setup_as_new(name, pass2);
   Config config;
-  config.load(util::config_dir() + "/config.toml");
+  config.load(pwds::util::config_dir() + "/config.toml");
 
   VaultConfig vaultConfig{name, path};
   config.add_vault(vaultConfig);
@@ -90,8 +88,8 @@ void vault_rotate(const args::parser& parser)
 
 void vault_persist(const args::parser& parser)
 {
-  auto pass = util::prompt_password("Enter master password: ");
-  auto encoded = base64_encode((unsigned char*)pass.c_str(), pass.length());
+  auto pass = pwds::util::prompt_password("Enter master password: ");
+  auto encoded = base64::to_base64(pass);
 
   std::ofstream os(parser.get("pwfile"));
   os << encoded;
@@ -101,27 +99,24 @@ void vault_persist(const args::parser& parser)
 
 void vault_sync(const args::parser& parser)
 {
-  std::ifstream cert("cert.pem");
-  std::stringstream ss;
-  ss << cert.rdbuf();
-
   auto vault = get_vault(parser);
-  vault.import_certificate("test-cert", ss.str());
+  auto local = parser.get_as<bool>("local");
+  vault.remote_sync(local);
 }
 
 void secret_create(const args::parser& parser)
 {
   auto vault = get_vault(parser);
-  std::string value = util::prompt_password("Secret value: ");
-  vault.save_secret(parser.get("name"), value);
+  std::string value = pwds::util::prompt_password("Secret value: ");
+  vault.create_secret(parser.get("name"), value);
 }
 
 void secret_list()
 {
   Config config;
-  config.load(util::config_dir() + "/config.toml");
+  config.load(pwds::util::config_dir() + "/config.toml");
 
-  Vault vault(config.get_default().location);
+  Vault vault(config.get_default().location, config.get_default().name);
 
   auto allSecrets = vault.list_secrets();
 
@@ -142,7 +137,7 @@ void secret_load(const args::parser& parser)
 void secret_set(const args::parser& parser)
 {
   auto vault = get_vault(parser);
-  std::string value = util::prompt_password("Secret value: ");
+  std::string value = pwds::util::prompt_password("Secret value: ");
   auto name = parser.get("name");
   vault.update_secret(name, value);
 
@@ -157,7 +152,7 @@ void secret_delete(const args::parser& parser)
 
 int main(int argc, char** argv)
 {
-  auto parser = pwd::create_parser();
+  auto parser = pwds::create_parser();
 
   if (!parser.parse(argc, argv)) {
     return 1;
@@ -200,6 +195,15 @@ int main(int argc, char** argv)
     }
     else if (subs[1] == "delete") {
       secret_delete(parser);
+    }
+  }
+
+  else if (subs[0] == "config") {
+    if (subs[1] == "sync-url") {
+      Config config;
+      config.load(pwds::util::config_dir() + "/config.toml");
+      config.get_default().syncUrl = parser.get("value");
+      config.write_config();
     }
   }
 

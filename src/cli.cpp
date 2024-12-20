@@ -2,7 +2,7 @@
 
 #include "args/args.hpp"
 
-namespace pwd {
+namespace pwds {
 
 args::parser create_parser()
 {
@@ -31,10 +31,18 @@ args::parser create_parser()
       "Update an existing secret");
   secretSub.add_subcommand().name("delete").description("Delete a secret");
 
+  auto& configSub = parser.add_subcommand().name("config").description(
+      "Make changes to configuration");
+  configSub.add_subcommand()
+      .name("sync-url")
+      .description("Set syncing server URL");
+
   parser.add_flag().name("name").short_name("n");
+  parser.add_flag().name("value");
   parser.add_flag().name("pwfile").short_name("p");
+  parser.add_flag().name("local").boolean();
 
   return parser;
 }
 
-}  // namespace pwd
+}  // namespace pwds

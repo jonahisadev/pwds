@@ -3,18 +3,21 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <iostream>
 #include <regex>
+#include <sstream>
 #include <string>
 
 #include "pstream/pstream.h"
 
 namespace fs = std::filesystem;
 
+namespace pwds {
 namespace util {
 
 void tty_echo(bool shouldEcho)
@@ -39,6 +42,15 @@ std::string prompt_password(const std::string& p)
   util::tty_echo(true);
   std::cout << std::endl;
   return password;
+}
+
+std::string prompt(const std::string& p)
+{
+  std::string response;
+  std::cout << p;
+  std::getline(std::cin, response);
+  std::cout << std::endl;
+  return response;
 }
 
 std::string config_dir()
@@ -72,4 +84,15 @@ std::string increment_master_alias(const std::string& alias)
   return "";
 }
 
+std::string current_time()
+{
+  using namespace std::chrono;
+
+  auto now = system_clock::now();
+  std::stringstream ss;
+  ss << std::format("{:%FT%TZ}", now);
+  return ss.str();
+}
+
 }  // namespace util
+}  // namespace pwds

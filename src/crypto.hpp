@@ -1,11 +1,16 @@
 #pragma once
 
-#include "src/cert.hpp"
-#include "src/key.hpp"
+#include <botan/rsa.h>
+#include <botan/x509cert.h>
 
+namespace pwds {
 namespace crypto {
 
-DerCert cert_der_from_pem(const std::string& pem);
-PublicKeyRSA extract_pub_from_cert(const DerCert& cert);
+Botan::X509_Certificate load_cert_pem(const std::string& path);
+Botan::RSA_PublicKey extract_pubk_from_cert(
+    const Botan::X509_Certificate& cert);
+bool validate_cert(const Botan::X509_Certificate& cert,
+                   std::vector<Botan::X509_Certificate> bundle);
 
 }  // namespace crypto
+}  // namespace pwds
